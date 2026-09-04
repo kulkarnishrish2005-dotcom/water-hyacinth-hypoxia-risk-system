@@ -1,0 +1,6 @@
+earthengine-api>=1.7.40
+geemap>=0.38.3
+streamlit>=1.62.0
+geopy>=2.5.0
+matplotlib>=3.11.1
+streamlit-folium

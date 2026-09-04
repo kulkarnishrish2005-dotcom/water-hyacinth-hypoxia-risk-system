@@ -1,0 +1,52 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Python environments, caches, and coverage output
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Google Earth Engine and local credentials
+.config/earthengine/
+.earthengine/
+earthengine/
+.credentials/
+credentials/
+secrets/
+.secrets/
+*credentials*.json
+earthengine*.json
+service-account*.json
+*.key
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs, temporary files, and build artifacts
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+build/
+dist/
+*.egg-info/
+
+# Generated analysis images
+comparison_output.png
+ndvi_output.png
+ndwi_output.png
+true_color.png

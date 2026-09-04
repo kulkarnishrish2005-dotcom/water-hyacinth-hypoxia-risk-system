@@ -1,0 +1,2 @@
+site,region,country,class,label,lat,lon,date,source,sample_type,sector,notes
+"<water_body_name>","<region_name>","<country>","<0|1|2>","<Water|Water Hyacinth|Other Vegetation>","<latitude>","<longitude>","<YYYY-MM-DD>","<imagery_or_reference_source>","<point|polygon-derived>","<sector_name>","<quality_control_notes>"
