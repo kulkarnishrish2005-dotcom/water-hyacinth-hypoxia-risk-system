@@ -1,0 +1,95 @@
+﻿=== Searching for: mock ===
+tests/test_mode_separation.py:18:from unittest.mock import patch
+tests/test_mode_separation.py:48:        with patch('ee_utils._run_prototype_mode') as mock:
+tests/test_mode_separation.py:49:            mock.return_value = {'mode': 'prototype'}
+tests/test_mode_separation.py:61:            mock.assert_called_once()
+tests/test_mode_separation.py:62:            call_kwargs = mock.call_args.kwargs
+tests/test_mode_separation.py:88:            with patch('ee_utils._run_scientific_mode') as mock:
+tests/test_mode_separation.py:89:                mock.return_value = {'mode': 'scientific'}
+tests/test_mode_separation.py:102:                mock.assert_called_once()
+tests/test_mode_separation.py:103:                call_kwargs = mock.call_args.kwargs
+tests/test_mode_separation.py:116:    def test_prototype_runs_without_ground_truth(self, mock_aoi, mock_pipeline):
+tests/test_mode_separation.py:118:        mock_aoi.return_value = None
+tests/test_mode_separation.py:119:        mock_pipeline.return_value = {
+tests/test_mode_separation.py:149:    def test_prototype_ignores_validation_splits(self, mock_aoi, mock_pipeline):
+tests/test_mode_separation.py:151:        mock_aoi.return_value = None
+tests/test_mode_separation.py:152:        mock_pipeline.return_value = {
+tests/test_mode_separation.py:183:    def test_prototype_wraps_pipeline_result(self, mock_aoi, mock_pipeline):
+tests/test_mode_separation.py:185:        mock_aoi.return_value = None
+tests/test_mode_separation.py:186:        mock_pipeline.return_value = {
+tests/test_mode_separation.py:326:    """Full pipeline integration tests (mocked GEE)."""
+tests/test_mode_separation.py:330:    def test_prototype_mode_end_to_end(self, mock_aoi, mock_pipeline):
+tests/test_mode_separation.py:332:        mock_aoi.return_value = None
+tests/test_mode_separation.py:333:        mock_pipeline.return_value = {
+tests/test_mode_separation.py:366:        mock_pipeline.assert_called_once()
+tests/test_mode_separation.py:367:        pipeline_kwargs = mock_pipeline.call_args.kwargs
+tests/test_mode_separation.py:374:    def test_scientific_mode_end_to_end(self, mock_scientific):
+tests/test_mode_separation.py:376:        mock_scientific.return_value = {
+tests/test_mode_separation.py:417:            mock_scientific.assert_called_once()
+
+=== Searching for: stub ===
+
+
+=== Searching for: TODO ===
+
+
+=== Searching for: placeholder ===
+PROJECT_COMPLETION_REPORT.md:97:- Γ£à **Surface Temperature** (`compute_surface_temperature_placeholder()`)
+PROJECT_COMPLETION_REPORT.md:99:  - Sentinel-2 placeholder with clear limitation documentation
+PROJECT_COMPLETION_REPORT.md:157:   - Added compute_surface_temperature_placeholder()
+PROJECT_COMPLETION_REPORT.md:159:   - Added compute_sentinel2_temperature_placeholder()
+PROJECT_COMPLETION_REPORT.md:242:- [x] Surface temperature interface (Landsat placeholder)
+PROJECT_COMPLETION_REPORT.md:496:   - Temperature placeholder
+PROJECT_COMPLETION_REPORT.md:536:- Γ¥î **Landsat thermal imagery** for actual surface temperature (currently placeholder)
+PROJECT_COMPLETION_REPORT.md:654:   - Temperature placeholder Γëá actual water surface temperature
+PROJECT_COMPLETION_REPORT.md:682:   - Placeholder implementation documented but not functional
+PROJECT_COMPLETION_REPORT.md:901:    - Replace temperature placeholder with actual Landsat data
+README.md:177:- Dissolved oxygen proxy (DO_proxy) is a placeholder, not a measured value
+app.py:278:            placeholder="e.g., Pune, Mumbai, Loktak Lake",
+app.py:444:                    placeholder="e.g., site_a,site_b"
+app.py:449:                    placeholder="e.g., site_c"
+app.py:455:                    placeholder="e.g., north,south"
+app.py:460:                    placeholder="e.g., east,west"
+app.py:466:                    placeholder="e.g., north,center"
+app.py:471:                    placeholder="e.g., south,east"
+docs/research_and_patent_notes.md:75:3. **Surface Temperature**: Landsat thermal bands (Sentinel-2 lacks thermal; placeholder implemented)
+docs/research_and_patent_notes.md:92:- DO_proxy is a placeholder (temperature used as proxy in prototype)
+docs/research_and_patent_notes.md:159:- DO_proxy placeholder (temperature-based)
+docs/research_and_patent_notes.md:176:- DO_proxy is a placeholder (satellite cannot measure dissolved oxygen directly)
+ee_utils.py:693:        # Placeholder thumbnails for scientific mode (no thumbnails in scientific pipeline)
+
+=== Searching for: random ===
+PROJECT_COMPLETION_REPORT.md:28:- Γ£à Random Forest classifier with Dynamic World proxy training
+PROJECT_COMPLETION_REPORT.md:209:- [x] Random Forest classifier
+PROJECT_COMPLETION_REPORT.md:323:- [x] Random Forest training and classification
+PROJECT_COMPLETION_REPORT.md:429:   - Random Forest classification
+PROJECT_COMPLETION_REPORT.md:489:   - Random Forest training
+QUICKSTART.md:55:- Trains Random Forest only on the scientific training set
+QUICKSTART.md:107:    'classifier': 'RandomForest',
+QUICKSTART.md:149:- Random Forest classifier with spatial hold-out validation
+README.md:41:- Random Forest classifier using:
+README.md:52:Before running the Random Forest classifier, the pipeline computes the **deterministic area**
+README.md:163:### Random Forest Parameters
+app.py:32:    classify_random_forest,
+app.py:694:                    <div class="image-title">≡ƒù║∩╕Å Random Forest Classification Map</div>
+docs/research_and_patent_notes.md:58:**Classifier**: Random Forest (50 trees) trained on spatial hold-out validation splits
+docs/research_and_patent_notes.md:101:**Aspect**: Combining NDVI, NDWI, NDVI texture, and distance-to-shore in a Random Forest classifier specifically tuned for discriminating water hyacinth from other aquatic vegetation (lotus-like species).
+docs/research_and_patent_notes.md:304:- A Phase 1 module that classifies water hyacinth using NDVI, NDWI, NDVI texture, and distance-to-shore features via a Random Forest classifier with spatial hold-out validation
+docs/research_and_patent_notes.md:313:3. Classifying water hyacinth vs. other aquatic vegetation using a trained Random Forest classifier
+ee_utils.py:45:    'classifier': 'RandomForest',
+ee_utils.py:646:    classifier = ee.Classifier.smileRandomForest(numberOfTrees=50, seed=42).train(
+ee_utils.py:1129:            'If sector metadata is missing, do not fall back to a misleading random split.'
+ee_utils.py:1333:# STEP 5: Random Forest Classifier
+ee_utils.py:1409:    Pixels in the ambiguous middle ground are left UNLABELED. The Random Forest must
+ee_utils.py:1490:    # ΓöÇΓöÇ Random Sampling (Honest Darts) ΓöÇΓöÇ
+ee_utils.py:1551:def classify_random_forest(image, training_fc, classification_bands=None,
+ee_utils.py:1559:    Train a Random Forest classifier using Earth Engine's smileRandomForest.
+ee_utils.py:1589:    # Add random column FIRST so we can split it
+ee_utils.py:1590:    training_fc_with_random = training_fc.randomColumn(seed=1)
+ee_utils.py:1591:    test_points = training_fc_with_random.filter(ee.Filter.lt('random', test_fraction))
+ee_utils.py:1592:    train_points = training_fc_with_random.filter(ee.Filter.gte('random', test_fraction))
+ee_utils.py:1594:    trained_classifier = ee.Classifier.smileRandomForest(
+ee_utils.py:1774:        classification_result = classify_random_forest(
+verify_import.py:18:        classify_random_forest,
+
+

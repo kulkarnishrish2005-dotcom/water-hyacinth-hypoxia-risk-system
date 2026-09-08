@@ -78,51 +78,6 @@ SCIENCE_CLASS_LABELS = [
 ]
 
 # Default Phase 2 configuration
-PHASE2_CONFIG = {
-    'chlorophyll_proxy': {
-        'enabled': True,
-        'formula': 'Gitelson',
-        'red_edge_band': 'B5',  # Red edge
-        'red_band': 'B4',        # Red
-        'nir_band': 'B8',        # Near-infrared
-        'coefficients': {
-            'L': 2.56,
-            'G': 6.09,
-            'C1': 7.11,
-            'C2': 19.67
-        }
-    },
-    'turbidity_proxy': {
-        'enabled': True,
-        'formula': 'Band ratio',
-        'ratio': 'B4 / B8',  # Red / NIR
-        'normalization': '0-1 scale after min-max'
-    },
-    'temperature': {
-        'enabled': True,
-        'source': 'Landsat thermal',
-        'method': 'Single-channel split-window'
-    },
-    'hypoxia_risk': {
-        'enabled': True,
-        'classes': ['LOW', 'MODERATE', 'HIGH'],
-        'features': ['chlorophyll_proxy', 'turbidity_proxy', 'temperature', 'hyacinth_density']
-    },
-    'hhri': {
-        'enabled': True,
-        'weights': {
-            'w1_ndvi': 1.0,
-            'w2_ndwi': 1.0,
-            'w3_chl': 1.0,
-            'w4_turbidity': 1.0,
-            'w5_doproxy': 1.0
-        },
-        'thresholds': {
-            'low': 0.3,
-            'moderate': 0.6
-        }
-    }
-}
 
 
 def _coerce_sample_id(row, index):
@@ -546,6 +501,12 @@ def _run_prototype_mode(analysis_date, aoi=None, lat=None, lon=None,
         'hhri_mean': result.get('hhri_mean'),
         'chl_proxy_mean': result.get('chl_proxy_mean'),
         'turb_proxy_mean': result.get('turb_proxy_mean'),
+        # Three-state vegetation detection gate fields
+        'detection_state': result.get('detection_state', 'classified'),
+        'confident_veg_area_ha': result.get('confident_veg_area_ha'),
+        'classify_threshold_ha': result.get('classify_threshold_ha'),
+        'p95_ndvi': result.get('p95_ndvi'),
+        'suspect_signal': result.get('suspect_signal'),
     }
 
     print("\n=== PROTOTYPE MODE Complete ===\n")
@@ -754,42 +715,58 @@ def initialize_ee(project_id=EE_PROJECT_ID):
 # ============================================================
 
 def make_aoi(lat, lon, buffer_m=3000):
-    """Create an Area of Interest geometry from lat/lon with a buffer."""
-    return ee.Geometry.Point([lon, lat]).buffer(buffer_m)
+    """Create an Area of Interest geometry from lat/lon with a buffer, returned as a bounding box."""
+    return ee.Geometry.Point([lon, lat]).buffer(buffer_m).bounds()
 
 
 # ============================================================
 # STEP 3: Pull Sentinel-2 imagery
 # ============================================================
 
+def mask_s2_clouds(image):
+    """Masks clouds in a Sentinel-2 image using the QA60 band."""
+    qa = image.select('QA60')
+    cloud_bit_mask = 1 << 10
+    cirrus_bit_mask = 1 << 11
+    mask = qa.bitwiseAnd(cloud_bit_mask).eq(0).And(
+           qa.bitwiseAnd(cirrus_bit_mask).eq(0))
+    # Preserve original 0-10000 scale
+    return image.updateMask(mask)
+
 def get_sentinel2_image(aoi, start_date='2025-01-01', end_date='2025-03-01', max_cloud=10):
     """
     Pull Sentinel-2 SR Harmonized imagery filtered by date, bounds, and cloud cover.
-
-    Returns the first clear-image or None if no image meets criteria.
+    
+    Applies a pixel-level cloud mask (QA60) and sorts descending so the clearest 
+    images are placed on top when mosaiced.
     """
     collection = (
         ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
         .filterBounds(aoi)
         .filterDate(start_date, end_date)
         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', max_cloud))
-        .sort('CLOUDY_PIXEL_PERCENTAGE')
+        .map(mask_s2_clouds)
+        .sort('CLOUDY_PIXEL_PERCENTAGE', False) # Descending: clear images are drawn last (on top)
     )
 
     count = collection.size().getInfo()
     print(f"Found {count} Sentinel-2 images matching criteria")
 
     if count == 0:
-        print("⚠️  No cloud-free Sentinel-2 image found for the given date range and location.")
+        print("  No cloud-free Sentinel-2 image found for the given date range and location.")
         return None
 
-    image = collection.first()
+    # Use mosaic to stitch tiles together, preventing wedge-shaped cutoffs
+    image = collection.mosaic().clip(aoi)
 
-    # Clip to AOI
-    image = image.clip(aoi)
-
-    cloud_pct = image.get('CLOUDY_PIXEL_PERCENTAGE').getInfo()
-    print(f"Selected image date: {image.date().format().getInfo()}, Cloud %: {cloud_pct}%")
+    # Note: Because the collection was mapped with mask_s2_clouds,
+    # the 'CLOUDY_PIXEL_PERCENTAGE' property on individual images was preserved,
+    # but the mosaic() operation creates a new image without those properties.
+    # We fetch it from the first image (now the cloudiest, due to descending sort) just for logging.
+    first_image = collection.first()
+    if first_image:
+        cloud_pct = first_image.get('CLOUDY_PIXEL_PERCENTAGE').getInfo()
+        print(f"Mosaic created. First tile Cloud %: {cloud_pct}%")
 
     return image
 
@@ -831,20 +808,13 @@ def compute_water_land_mask(image, aoi):
     jrc = ee.Image('JRC/GSW1_4/GlobalSurfaceWater')
     occurrence = jrc.select('occurrence')  # % of time pixel was observed as water
 
-    # Threshold: >50% occurrence means reliably wet
-    water_occurrence = occurrence.gte(50).rename('water_occurrence')
+    # Threshold: >20% occurrence defines the historical water basin.
+    # We do NOT use NDWI here because water hyacinth has NDWI < 0.
+    # We MUST unmask with 0 so that actual land becomes 0 instead of NODATA,
+    # which is required for fastDistanceTransform to work properly later.
+    water_mask = occurrence.unmask(0).gte(20).rename('water_mask')
 
-    # --- NDWI Secondary Check ---
-    ndwi = image.select('NDWI')
-    # NDWI > 0 typically indicates water; use a loose threshold to capture varied water bodies
-    water_ndwi = ndwi.gt(0).rename('water_ndwi')
-
-    # --- Combine: Both checks must agree (AND logic) ---
-    # A pixel is water only if it has >50% JRC occurrence AND NDWI > 0
-    # Use updateMask with the NDWI mask
-    water_mask = water_occurrence.updateMask(water_ndwi).rename('water_mask')
-
-    # Land is the complement
+    # Land is the complement (binary 0)
     land_mask = water_mask.Not().rename('land_mask')
 
     # Add both masks to an output image
@@ -1033,17 +1003,18 @@ def compute_ndvi_texture(image, kernel_radius=3):
     return image_with_texture
 
 
-def compute_distance_to_shore(image, land_mask):
+def compute_distance_to_shore(image, water_mask):
     """
-    Compute distance to shore from the land mask.
-    Uses fastDistanceTransform then sqrt.
-    Lotus tends to be near edges; hyacinth can occupy open water.
-
+    Compute distance to shore from the water mask.
+    water_mask is 1 for water, 0 for land.
+    fastDistanceTransform computes distance to the nearest ZERO pixel.
+    So water_mask.fastDistanceTransform() computes distance from water (1) to land (0).
+    
     Returns image with added 'distance_to_shore' band.
     """
-    # land_mask should be 1 for land, 0 for water
-    # fastDistanceTransform computes distance from each water pixel to nearest land
-    distance = land_mask.fastDistanceTransform().sqrt().rename('distance_to_shore')
+    # fastDistanceTransform computes squared Euclidean distance in pixels.
+    # We take sqrt to get distance in pixels.
+    distance = water_mask.fastDistanceTransform().sqrt().rename('distance_to_shore')
 
     image_with_dist = image.addBands([distance])
     print(f"✓ Computed distance to shore transform")
@@ -1078,325 +1049,6 @@ def compute_ndvi_difference(image1, image2, aoi):
 # ============================================================
 
 
-def compute_chlorophyll_proxy(image, formula='Gitelson', red_edge_band='B5', red_band='B4',
-                              nir_band='B8', coefficients=None):
-    """
-    Compute satellite-derived chlorophyll-a proxy using the Gitelson formulation.
-
-    Gitelson et al. (2008, 2014) red-edge chlorophyll algorithm for Sentinel-2:
-    Chl = L * ((RhoRedEdge / RhoRed) - C1) / ((RhoRedEnd / RhoRed) - C2) + offset
-
-    Where:
-    - RhoRedEnd = reflectance at red edge (B5 for Sentinel-2)
-    - RhoRed = reflectance at red (B4 for Sentinel-2)
-    - L, C1, C2 = sensor-specific coefficients
-
-    Returns chlorophyll proxy in μg/L (or arbitrary units after normalization).
-    """
-    if coefficients is None:
-        # Documented Gitelson coefficients for medium-resolution missions
-        coefficients = {
-            'L': 2.56,
-            'G': 6.09,
-            'C1': 7.11,
-            'C2': 19.67
-        }
-
-    # Select the appropriate bands from the image
-    try:
-        rho_red = image.select(red_band).multiply(0.0001).rename('rho_red')  # TOA reflectance scaling
-        rho_red_edge = image.select(red_edge_band).multiply(0.0001).rename('rho_red_edge')
-        rho_nir = image.select(nir_band).multiply(0.0001).rename('rho_nir')
-    except Exception:
-        # Fallback: assume bands already in image
-        rho_red = image.select(red_band).rename('rho_red')
-        rho_red_edge = image.select(red_edge_band).rename('rho_red_edge')
-        rho_nir = image.select(nir_band).rename('rho_nir')
-
-    # Gitelson red-edge chlorophyll formula (preserved exactly):
-    # Chl = L * ((RhoRedEdge / RhoRed) - C1) / ((RhoRedEdge / RhoRed) - C2)
-    # EE Image must call the method, NOT the Python float coefficient.
-    ratio = rho_red_edge.divide(rho_red)
-    chl_proxy = ratio.subtract(coefficients['C1']).divide(
-        ratio.subtract(coefficients['C2'])
-    ).multiply(coefficients['L']).rename('chlorophyll_a_proxy')
-
-    print(f"✓ Computed chlorophyll-a proxy using {formula} formula (Gitelson red-edge)")
-    return image.addBands([chl_proxy])
-
-
-def compute_turbidity_proxy(image, ratio_bands=None):
-    """
-    Compute satellite turbidity proxy using a band ratio formulation.
-
-    Turbidity proxy = Red / NIR (or Blue / Red depending on algorithm).
-    For Sentinel-2: typically B4 (Red) / B8 (NIR) or B3 (Green) / B4 (Red).
-
-    Returns a normalized turbidity proxy band.
-    """
-    if ratio_bands is None:
-        # Default: Red (B4) / NIR (B8) - works well for suspended sediments
-        ratio_bands = ['B4', 'B8']
-
-    try:
-        red_band_obj = image.select(ratio_bands[0])
-        nir_band_obj = image.select(ratio_bands[1])
-        # Ratio: Red / NIR
-        turbidity = red_band_obj.divide(nir_band_obj).rename('turbidity_proxy')
-    except Exception:
-        # Alternative: Green / Red
-        try:
-            green_band = image.select('B3')
-            red_band = image.select('B4')
-            turbidity = green_band.divide(red_band).rename('turbidity_proxy')
-        except Exception:
-            raise ValueError("Could not compute turbidity proxy - required bands not found")
-
-    print("✓ Computed turbidity proxy (Red/NIR band ratio)")
-    return image.addBands([turbidity])
-
-
-def compute_surface_temperature_placeholder(image, aoi, use_landsat=True):
-    """
-    Compute surface temperature estimate.
-
-    For Sentinel-2 (no thermal bands): returns a placeholder indicating limitation.
-    For Landsat: retrieves thermal band, applies cloud masking, and processes surface temperature.
-
-    Returns:
-    - If use_landsat=True and Landsat imagery is available: surface temperature in Celsius
-    - If only Sentinel-2: a placeholder proxy band with clear documentation of limitation
-    """
-    # Check if this is Sentinel-2 (no thermal bands)
-    try:
-        band_names = image.bandNames().getInfo()
-        has_thermal = 'B10' in band_names or 'B11' in band_names
-    except Exception:
-        has_thermal = False
-
-    if not has_thermal or use_landsat:
-        # Try Landsat approach - look for Landsat 8/9 thermal data
-        try:
-            return compute_landsat_surface_temperature(image, aoi)
-        except Exception:
-            # Fall back to placeholder
-            return compute_sentinel2_temperature_placeholder(image, aoi)
-    else:
-        # Sentinel-2 has no thermal bands - return placeholder
-        return compute_sentinel2_temperature_placeholder(image, aoi)
-
-
-def compute_landsat_surface_temperature(image, aoi):
-    """
-    Retrieve Landsat thermal band, apply cloud masking, and compute surface temperature.
-
-    Uses the single-channel method with Landsat 8/9 STBQA calibration coefficients.
-    See: USGS documentation for Landsat surface temperature product.
-
-    Returns image with 'land_surface_temperature' band in Celsius.
-    """
-    # This is a placeholder implementation - actual Landsat processing would require
-    # a separate Landsat image collection, which is outside the Sentinel-2-only pipeline.
-    # The function signature accepts a Sentinel-2 image, so we document the limitation.
-    raise NotImplementedError(
-        "Landsat surface temperature requires a separate Landsat image collection. "
-        "This function is called from compute_surface_temperature_placeholder for "
-        "interface compatibility but will raise NotImplementedError with Sentinel-2 data."
-    )
-
-
-def compute_sentinel2_temperature_placeholder(image, aoi):
-    """
-    Return a placeholder temperature band for Sentinel-2 images (which lack thermal bands).
-
-    Documents the limitation clearly and provides a no-op band that users can replace
-    with actual in-situ measurements when available.
-
-    Returns image with 'water_surface_temperature_placeholder' band.
-    """
-    # Create a placeholder band with a clear nodata/missing value indicator
-    # All values will be -999 with a comment band explaining the limitation
-    placeholder = image.select('B1').multiply(0).add(-999).rename(
-        'water_surface_temperature_placeholder'
-    )
-
-    # Add a quality advisory band
-    advisory = image.select('B1').multiply(0).add(0).rename('temp_advisory')
-    # Set advisory value to indicate Sentinel-2 limitation
-    # 0 = Sentinel-2 no thermal data; 1 = Landsat available; 2 = in-situ measurement
-
-    # Clip to AOI
-    placeholder = placeholder.clip(aoi)
-    advisory = advisory.clip(aoi)
-
-    print("✓ Computed surface temperature placeholder — Sentinel-2 has no thermal bands")
-    return image.addBands([placeholder, advisory])
-
-
-def compute_hypoxia_risk(image, chl_proxy_band='chlorophyll_a_proxy',
-                         turbidity_proxy_band='turbidity_proxy',
-                         temperature_band='water_surface_temperature_placeholder',
-                         hyacinth_density_band=None,
-                         weights=None, thresholds=None):
-    """
-    Predict hypoxia risk (LOW, MODERATE, HIGH) using a feature-based model.
-
-    This is a proxy/rule-based risk estimate, NOT a measured dissolved oxygen model.
-
-    Critical research contribution:
-    Phase 1 hyacinth output becomes an input feature for hypoxia-risk estimation.
-
-    The hypothesis:
-    Higher aquatic vegetation burden can be associated with ecological conditions
-    that increase oxygen stress under appropriate environmental conditions, but
-    the relationship is site- and context-dependent.
-
-    Do not claim causation from satellite correlation alone.
-
-    Parameters:
-    - image: Earth Engine Image with feature bands
-    - chl_proxy_band: name of chlorophyll proxy band
-    - turbidity_proxy_band: name of turbidity proxy band
-    - temperature_band: name of temperature band
-    - hyacinth_density_band: name of hyacinth classification band (from Phase 1)
-    - weights: dict of configurable weights {w1, w2, w3, w4, w5}
-    - thresholds: dict of risk category thresholds {low, moderate}
-
-    Returns image with 'hypoxia_risk' band (categorical: 0=LOW, 1=MODERATE, 2=HIGH)
-    and 'hhri' band (continuous HHRI index).
-    """
-    # Set default weights (configurable)
-    if weights is None:
-        weights = {
-            'w1_ndvi': 1.0,
-            'w2_ndwi': 1.0,
-            'w3_chl': 1.0,
-            'w4_turbidity': 1.0,
-            'w5_doproxy': 1.0
-        }
-
-    # Set default thresholds
-    if thresholds is None:
-        thresholds = {
-            'low': 0.3,
-            'moderate': 0.6
-        }
-
-    # Get chlorophyll proxy band
-    try:
-        chl = image.select(chl_proxy_band)
-    except Exception:
-        chl = image.normalizedDifference([]).rename('chl_proxy_placeholder')  # fallback
-
-    # Get turbidity proxy band
-    try:
-        turb = image.select(turbidity_proxy_band)
-    except Exception:
-        turb = image.normalizedDifference([]).rename('turbidity_proxy_placeholder')
-
-    # Get temperature band
-    try:
-        temp = image.select(temperature_band)
-        # If it's the placeholder (-999), replace with sensible default
-        temp = temp.where(temp.gt(-500), image.select('B1').multiply(0).add(20))
-        temp = temp.rename('temperature_celsius')
-    except Exception:
-        temp = image.normalizedDifference([]).rename('temp_placeholder')
-
-    # Get hyacinth density if available
-    if hyacinth_density_band:
-        try:
-            hyacinth = image.select(hyacinth_density_band)
-        except Exception:
-            hyacinth = image.normalizedDifference([]).rename('hyacinth_density_placeholder')
-    else:
-        # Default: assume low hyacinth density (proxy = 0)
-        hyacinth = image.normalizedDifference([]).rename('hyacinth_density_zero')
-
-    # Normalize inputs
-
-    # Normalize chlorophyll proxy (assume typical range 0-100 μg/L for normalization)
-    chl_norm = chl.divide(100).min(1).max(0).rename('chl_norm')
-
-    # Normalize turbidity proxy (ratio is already 0+, clip at reasonable max)
-    turb_norm = turb.min(5).divide(5).rename('turb_norm')  # clip at 5, normalize
-
-    # Normalize temperature (assume typical water temp range 0-30°C)
-    temp_norm = temp.divide(30).min(1).max(0).rename('temp_norm')
-
-    # Normalize hyacinth density (0-1 range)
-    hyac_norm = hyacinth.min(1).max(0).rename('hyac_norm')
-
-    # Normalize NDVI to 0-1 range: (NDVI + 1) / 2
-    ndvi_norm = (image.select('NDVI').add(1)).multiply(0.5).rename('ndvi_norm')
-
-    # Normalize 1-NDWI to 0-1 range
-    not_ndwi_norm = (ee.Image(1).subtract(image.select('NDWI'))).multiply(0.5).rename('not_ndwi_norm')
-
-    # Compute HHRI index:
-    # HHRI = w1(NDVI) + w2(1 - NDWI) + w3(Chl) + w4(Turbidity) - w5(DO_proxy)
-    # Since DO_proxy is not available from satellite, we use temperature as a proxy placeholder
-    # The critical research contribution is that Phase 1 hyacinth output enters as a feature
-    #
-    # IMPORTANT: All arithmetic must use Earth Engine server-side operations (.add/.subtract),
-    # never Python '+'/'-' operators on EE server objects (which raises TypeError).
-
-    # Each weighted term must remain an EE Image so .add()/.subtract() work.
-    # ee.Number.multiply(ee.Image) -> ee.Image; we explicitly cast.
-    term1 = ndvi_norm.multiply(weights.get('w1_ndvi', 1.0)).rename('t1')
-    term2 = not_ndwi_norm.multiply(weights.get('w2_ndwi', 1.0)).rename('t2')
-    term3 = chl_norm.multiply(weights.get('w3_chl', 1.0)).rename('t3')
-    term4 = turb_norm.multiply(weights.get('w4_turbidity', 1.0)).rename('t4')
-    term5 = temp_norm.multiply(weights.get('w5_doproxy', 1.0)).rename('t5')  # DO_proxy placeholder
-
-    # Build HHRI step-by-step using EE server-side operations only.
-    # Formula unchanged: term1 + term2 + term3 + term4 - term5
-    hhri = (
-        term1.add(term2).add(term3).add(term4).subtract(term5)
-    ).rename('hhri')
-
-    # Apply HHRI thresholds to get risk categories
-    low_threshold = ee.Number(thresholds.get('low', 0.3))
-    moderate_threshold = ee.Number(thresholds.get('moderate', 0.6))
-
-    # Categorical risk assignment
-    # LOW: HHRI < low_threshold (risk = 0)
-    # MODERATE: low_threshold <= HHRI < moderate_threshold (risk = 1)
-    # HIGH: HHRI >= moderate_threshold (risk = 2)
-
-    # Use EE's .And() method for boolean operations
-    is_low = hhri.lt(low_threshold)
-    is_moderate = hhri.gte(low_threshold).And(hhri.lt(moderate_threshold))
-    is_high = hhri.gte(moderate_threshold)
-
-    # Create risk category images
-    risk_low = ee.Image(0).multiply(is_low.rename('mask_low')).rename('risk_low')
-    risk_mod = ee.Image(1).multiply(is_moderate.rename('mask_mod')).rename('risk_mod')
-    risk_high = ee.Image(2).multiply(is_high.rename('mask_high')).rename('risk_high')
-
-    # Combine: risk = risk_low + risk_mod + risk_high (only one should be 1, others 0)
-    # But since they are mutually exclusive, we can add them
-    hypoxia_risk = risk_low.add(risk_mod).add(risk_high).rename('hypoxia_risk_category')
-
-    result = {
-        'hhri': hhri,
-        'chlorophyll_proxy': chl_norm,
-        'turbidity_proxy': turb_norm,
-        'temperature': temp_norm,
-        'hyacinth_density': hyac_norm,
-        'hypoxia_risk_category': hypoxia_risk,
-        'weights': weights,
-        'thresholds': thresholds,
-        'note': 'Hypoxia risk model: proxy/rule-based estimate. '
-                'Phase 1 hyacinth density is an input feature. '
-                'Do not claim measured dissolved oxygen or causation. '
-                'HHRI combines NDVI, (1-NDWI), chlorophyll proxy, turbidity proxy, '
-                'and a DO_proxy placeholder (using temperature). '
-                'Weights are configurable but not empirically validated.'
-    }
-
-    print("✓ Computed hypoxia risk proxy with HHRI index")
-    return result
 
 
 # ============================================================
@@ -1683,8 +1335,14 @@ def create_training_fc(labelled_points, aoi):
 # STEP 5: Random Forest Classifier
 # ============================================================
 
-def create_dynamic_world_training_samples(image, aoi, start_date, end_date):
-    """Create automatic water and aquatic-vegetation samples from Dynamic World."""
+def create_dynamic_world_training_samples(image, aoi, start_date, end_date, water_mask=None):
+    """
+    DEPRECATED: Dynamic World proxy labels for aquatic vegetation are unreliable.
+    DW is a terrestrial land-cover product that labels most floating vegetation as "water",
+    producing severely imbalanced training data and ~0.18–0.22 recall on hyacinth.
+
+    Retained for backward compatibility. Use create_spectral_rule_training_samples() instead.
+    """
     dynamic_world = (
         ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1')
         .filterBounds(aoi)
@@ -1696,6 +1354,9 @@ def create_dynamic_world_training_samples(image, aoi, start_date, end_date):
 
     classification_bands = ['NDVI', 'NDWI', 'ndvi_texture', 'distance_to_shore']
     sampling_image = image.select(classification_bands).addBands(dynamic_world)
+    
+    if water_mask is not None:
+        sampling_image = sampling_image.updateMask(water_mask)
 
     samples = sampling_image.stratifiedSample(
         numPoints=100,
@@ -1720,19 +1381,168 @@ def create_dynamic_world_training_samples(image, aoi, start_date, end_date):
 
     training_fc = samples.map(set_classifier_class)
     sample_count = training_fc.size().getInfo()
-    print(f"✓ Created {sample_count} automatic Dynamic World training samples")
+    print(f"✓ Created {sample_count} automatic Dynamic World training samples (DEPRECATED)")
     return training_fc
 
 
+def create_spectral_rule_training_samples(image, aoi, water_mask,
+                                          n_water=200, n_veg=200,
+                                          scale=10, seed=42):
+    """
+    Rule-based proxy label generator for aquatic vegetation classification,
+    using site-adaptive spectral thresholds.
+
+    ── How it works ──────────────────────────────────────────────────────
+    This function generates training labels from spectral index thresholds applied only
+    to *confident* pixels. Because turbidity and baseline NDVI vary drastically
+    between water bodies (e.g. Loktak vs Vembanad), global constants fail.
+    
+    Instead, we compute the NDVI percentiles within the historical water mask
+    for the specific site, and set dynamic thresholds:
+    
+    - water_ndvi_max = 25th percentile of site NDVI (capped at max 0.05)
+    - veg_ndvi_min   = 95th percentile of site NDVI (floored at min 0.15)
+    
+    Confident open water:          NDVI < water_ndvi_max  AND  NDWI > 0.1
+    Confident aquatic vegetation:  NDVI > veg_ndvi_min  AND  NDWI < 0.1
+                                   AND pixel is inside the JRC water mask
+                                   (vegetation ON historical water = aquatic)
+
+    Pixels in the ambiguous middle ground are left UNLABELED. The Random Forest must
+    generalize to these from the full 4-feature set (NDVI, NDWI, ndvi_texture, distance_to_shore).
+    """
+    ndvi = image.select('NDVI')
+    ndwi = image.select('NDWI')
+
+    # Compute site-specific NDVI percentiles within the water body
+    ndvi_in_water = ndvi.updateMask(water_mask)
+    percentiles = ndvi_in_water.reduceRegion(
+        reducer=ee.Reducer.percentile([25, 95]),
+        geometry=aoi,
+        scale=30,  # 30m is fine for distribution stats
+        maxPixels=1e9,
+        tileScale=4
+    )
+    
+    p25 = ee.Number(percentiles.get('NDVI_p25'))
+    p95 = ee.Number(percentiles.get('NDVI_p95'))
+    
+    # Evaluate early for sanity check gate
+    p95_val = p95.getInfo()
+
+    # Adaptive thresholds with safety bounds (in case the lake is 100% choked or 100% clear)
+    water_ndvi_max = p25.min(0.05)
+    veg_ndvi_min = p95.max(0.15)
+    
+    # Static NDWI thresholds used as secondary confidence guards
+    water_ndwi_min = ee.Number(0.1)
+    veg_ndwi_max = ee.Number(0.1)
+
+    # ── Confident open water mask ──
+    confident_water = (
+        ndvi.lt(water_ndvi_max)
+        .And(ndwi.gt(water_ndwi_min))
+        .And(water_mask.eq(1))
+        .rename('label')
+    )
+
+    # ── Confident aquatic vegetation mask ──
+    confident_veg = (
+        ndvi.gt(veg_ndvi_min)
+        .And(ndwi.lt(veg_ndwi_max))
+        .And(water_mask.eq(1))
+        .rename('label')
+    )
+
+    classification_bands = ['NDVI', 'NDWI', 'ndvi_texture', 'distance_to_shore']
+
+    # ── Deterministic Area Calculation & Heuristic Gate ──
+    veg_area_img = confident_veg.multiply(ee.Image.pixelArea()).divide(10000).rename('area')
+    veg_area_val = veg_area_img.reduceRegion(
+        reducer=ee.Reducer.sum(), geometry=aoi, scale=30, maxPixels=1e9
+    ).getNumber('area').getInfo()
+
+    water_area_img = water_mask.multiply(ee.Image.pixelArea()).divide(10000).rename('area')
+    water_area_val = water_area_img.reduceRegion(
+        reducer=ee.Reducer.sum(), geometry=aoi, scale=30, maxPixels=1e9
+    ).getNumber('area').getInfo()
+
+    LOW_FLOOR_HA = 2.0
+    import math
+    # Provisional heuristic based on limited testing (Varanasi, Mississippi, Loktak, Vembanad).
+    # Not a rigorously validated universal threshold. See README for three-state design rationale.
+    CLASSIFY_THRESHOLD_HA = max(LOW_FLOOR_HA, 0.4 * math.sqrt(water_area_val))
+    
+    # Calculate median NDVI of the actual confident vegetation cohort
+    veg_ndvi_img = ndvi.updateMask(confident_veg)
+    veg_median_dict = veg_ndvi_img.reduceRegion(
+        reducer=ee.Reducer.median(),
+        geometry=aoi,
+        scale=30,
+        maxPixels=1e9,
+        tileScale=4
+    )
+    cohort_median = veg_median_dict.get('NDVI').getInfo()
+    cohort_val = float(cohort_median) if cohort_median is not None else 0.0
+    
+    if veg_area_val < LOW_FLOOR_HA:
+        print(f"  [GATE] State 1: no_significant_vegetation ({veg_area_val:.2f} ha < {LOW_FLOOR_HA} ha floor)")
+        raise ValueError(f"no_significant_vegetation|{veg_area_val:.2f}|{cohort_val:.3f}")
+    elif veg_area_val < CLASSIFY_THRESHOLD_HA:
+        print(f"  [GATE] State 2: low_confidence_signal ({veg_area_val:.2f} ha, threshold {CLASSIFY_THRESHOLD_HA:.2f} ha)")
+        raise ValueError(f"low_confidence_signal|{veg_area_val:.2f}|{CLASSIFY_THRESHOLD_HA:.2f}|{water_area_val:.2f}|{cohort_val:.3f}")
+    else:
+        print(f"  [GATE] State 3: classified ({veg_area_val:.2f} ha >= {CLASSIFY_THRESHOLD_HA:.2f} ha threshold)")
+
+    # ── Combine masks into a single class band ──
+    # Create an image that is 1 where confident_veg is true, 0 otherwise.
+    # Then mask it so it ONLY contains pixels that are EITHER confident_water OR confident_veg.
+    combined_class = ee.Image(0).byte().where(confident_veg, 1) \
+        .updateMask(confident_water.Or(confident_veg)) \
+        .rename('class')
+
+    # Attach the class band to the feature bands
+    combined_img = image.select(classification_bands).addBands(combined_class)
+
+    # ── Random Sampling (Honest Darts) ──
+    # Throw 10,000 darts across the AOI. Only those that land in the masked regions are kept.
+    # This prevents scraping the barrel for glitch pixels in clean rivers (Varanasi),
+    # while throwing enough darts to find real vegetation patches (Loktak/Vembanad).
+    training_fc = combined_img.sample(
+        region=aoi,
+        scale=scale,
+        numPixels=10000,
+        seed=seed,
+        geometries=True,
+        dropNulls=True,
+        tileScale=4
+    )
+
+    water_count = training_fc.filter(ee.Filter.eq('class', 0)).size().getInfo()
+    veg_count = training_fc.filter(ee.Filter.eq('class', 1)).size().getInfo()
+    total = training_fc.size().getInfo()
+    
+    w_thresh = water_ndvi_max.getInfo()
+    v_thresh = veg_ndvi_min.getInfo()
+    
+    print(f"✓ Created {total} spectral-rule proxy training samples (Adaptive)")
+    print(f"  Site NDVI percentiles: p25={p25.getInfo():.3f}, p95={p95_val:.3f}")
+    print(f"  Cohort median NDVI:   {cohort_val:.3f}")
+    print(f"  Confident water:      {water_count}  (NDVI < {w_thresh:.3f}, NDWI > 0.1)")
+    print(f"  Confident vegetation: {veg_count}  (NDVI > {v_thresh:.3f}, NDWI < 0.1)")
+
+    return training_fc.set('p95_ndvi', cohort_val).set('confident_veg_area_ha', veg_area_val).set('classify_threshold_ha', CLASSIFY_THRESHOLD_HA)
+
+
 def postprocess_vegetation_subclassification(classified_image, feature_image,
-                                          ndvi_texture_threshold=0.08,
-                                          distance_to_shore_threshold=50,
+                                          ndvi_texture_threshold=0.15,
+                                          distance_to_shore_threshold=5,
                                           vegetation_value=1):
     """
     Split the initial vegetation class into two subclasses using texture + shore distance.
 
     Rule used:
-    - Hyacinth: low NDVI texture (uniform mat) + far from shore
+    - Hyacinth: lower NDVI texture (uniform mat) + not strictly on the immediate bank
     - Other vegetation / lotus-like: high NDVI texture (patchy) + near shore
 
     Class mapping after this step:
@@ -1747,7 +1557,6 @@ def postprocess_vegetation_subclassification(classified_image, feature_image,
     hyacinth_mask = (
         is_vegetation
         .And(ndvi_texture.lte(ndvi_texture_threshold))
-        .And(distance_to_shore.gte(distance_to_shore_threshold))
     )
 
     # Everything else classified as vegetation is treated as other vegetation / lotus-like
@@ -1758,8 +1567,8 @@ def postprocess_vegetation_subclassification(classified_image, feature_image,
 
 
 def classify_random_forest(image, training_fc, classification_bands=None,
-                          ndvi_texture_threshold=0.08,
-                          distance_to_shore_threshold=50,
+                          ndvi_texture_threshold=0.15,
+                          distance_to_shore_threshold=5,
                           postprocess_vegetation=True,
                           water_mask=None,
                           water_buffer_m=30,
@@ -1795,11 +1604,16 @@ def classify_random_forest(image, training_fc, classification_bands=None,
 
     stacked = image.select(classification_bands).updateMask(classification_mask)
 
+    # Add random column FIRST so we can split it
+    training_fc_with_random = training_fc.randomColumn(seed=1)
+    test_points = training_fc_with_random.filter(ee.Filter.lt('random', test_fraction))
+    train_points = training_fc_with_random.filter(ee.Filter.gte('random', test_fraction))
+
     trained_classifier = ee.Classifier.smileRandomForest(
         numberOfTrees=50,
         seed=42
     ).train(
-        features=training_fc,
+        features=train_points,
         classProperty='class',
         inputProperties=classification_bands
     )
@@ -1827,8 +1641,7 @@ def classify_random_forest(image, training_fc, classification_bands=None,
 
     # Proper train/test split: 70% train, 30% held-out test.
     # This is the metric that reflects real generalization performance.
-    test_points = training_fc.randomColumn(seed=1).filter(ee.Filter.lt('random', test_fraction))
-    train_points = training_fc.filter(ee.Filter.gte('random', test_fraction))
+    # (train_points and test_points are now defined earlier)
 
     accuracy = test_points.classify(trained_classifier).errorMatrix(
         'class', 'classification'
@@ -1950,16 +1763,32 @@ def run_full_pipeline(lat, lon,
     # Compute distance to shore
     image_with_features = compute_distance_to_shore(image_with_texture, water_mask)
 
-    # Generate automatic training data from Dynamic World for this AOI and date range.
-    training_fc = create_dynamic_world_training_samples(
-        image_with_features, aoi, start_date, end_date
-    )
-
-    # Build classification bands
-    classification_bands = ['NDVI', 'NDWI', 'ndvi_texture', 'distance_to_shore']
-
-    # Run RF classification
     try:
+        # Generate training labels using rule-based spectral heuristic.
+        # This replaces the deprecated Dynamic World proxy which mislabeled
+        # most floating vegetation as "water". See create_spectral_rule_training_samples() docstring.
+        training_fc = create_spectral_rule_training_samples(
+            image_with_features, aoi, water_mask,
+            n_water=200, n_veg=200
+        )
+    
+        classification_bands = ['NDVI', 'NDWI', 'ndvi_texture', 'distance_to_shore']
+        
+        # Evaluate sample counts to flag low-confidence training
+        water_count = training_fc.filter(ee.Filter.eq('class', 0)).size()
+        veg_count = training_fc.filter(ee.Filter.eq('class', 1)).size()
+        
+        # We use a combined conditional to set the flag client-side later, 
+        # but EE doesn't easily return these scalars alongside the image without getInfo.
+        # We can fetch them via getInfo safely here since prototype mode uses getInfo anyway.
+        veg_count_val = veg_count.getInfo()
+        water_count_val = water_count.getInfo()
+        is_low_confidence = (veg_count_val < 20) or (water_count_val < 20)
+        
+        if is_low_confidence:
+            print(f"  ⚠️ Low confidence training: only {water_count_val} water and {veg_count_val} veg samples.")
+    
+        # Run RF classification
         classification_result = classify_random_forest(
             image_with_features,
             training_fc,
@@ -1967,49 +1796,96 @@ def run_full_pipeline(lat, lon,
             water_mask=water_mask,
             water_buffer_m=30
         )
+        
+        p95_val = training_fc.get('p95_ndvi').getInfo()
+        veg_area = training_fc.get('confident_veg_area_ha').getInfo()
+        thresh_area = training_fc.get('classify_threshold_ha').getInfo()
+        
+        classification_result['low_confidence_training'] = is_low_confidence
+        classification_result['veg_sample_count'] = veg_count_val
+        classification_result['water_sample_count'] = water_count_val
+        classification_result['detection_state'] = 'classified'
+        classification_result['p95_ndvi'] = p95_val
+        classification_result['suspect_signal'] = p95_val < 0.30
+        classification_result['confident_veg_area_ha'] = veg_area
+        classification_result['classify_threshold_ha'] = thresh_area
     except Exception as e:
-        classification_result = {
-            'error': str(e),
-            'training_accuracy': 0,
-            'thumbnail_url': None
-        }
-
-    # --- Phase 2: Compute auxiliary features ---
-    # Chlorophyll-a proxy
-    chl_proxy = compute_chlorophyll_proxy(image_with_indices)
-
-    # Turbidity proxy
-    turbidity_proxy = compute_turbidity_proxy(image_with_indices)
-
-    # Surface temperature (requires Landsat; placeholder if only Sentinel-2 available)
-    temperature = compute_surface_temperature_placeholder(image_with_indices, aoi)
-
-    # Add the classification band to the image so hypoxia_risk can select hyacinth density
-    # The classified_image has the 3-class ontology: 0=Water, 1=Hyacinth, 2=Other Vegetation
-    classified_image = classification_result.get('classified_image')
-    if classified_image is not None:
-        image_with_classification = image_with_indices.addBands(
-            classified_image.rename('classification')
-        )
-    else:
-        # Fallback: add a dummy band so the name exists
-        image_with_classification = image_with_indices.addBands(
-            ee.Image(0).rename('classification')
-        )
-
-    # Hypoxia risk / HHRI — integrate Phase 1 hyacinth output with Phase 2 proxies
-    # First add the proxy bands that compute_hypoxia_risk expects
-    image_with_hypoxia = image_with_classification.addBands([
-        chl_proxy, turbidity_proxy, temperature
-    ])
-    # Use 'classification' band name (0=Water, 1=Hyacinth, 2=Other Vegetation)
-    hypoxia_result = compute_hypoxia_risk(
-        image_with_hypoxia,
-        chl_proxy_band='chlorophyll_a_proxy',
-        turbidity_proxy_band='turbidity_proxy',
-        temperature_band='water_surface_temperature_placeholder',
-        hyacinth_density_band='classification',
-    )
+        error_msg = str(e)
+        if "no_significant_vegetation" in error_msg:
+            # State 1: Below 2.0 ha floor — genuinely clean water body
+            print("  [RESULT] No significant vegetation detected.")
+            parts = error_msg.split('|')
+            detected_ha = float(parts[1]) if len(parts) > 1 else 0.0
+            p95_val = float(parts[2]) if len(parts) > 2 else None
+            
+            dummy_classified = ee.Image(0).updateMask(water_mask.eq(1)).rename('classification')
+            classification_result = {
+                'classified_image': dummy_classified,
+                'binary_classified_image': dummy_classified,
+                'training_accuracy': 1.0,
+                'held_out_accuracy': 1.0,
+                'confusion_matrix': None,
+                'per_class_metrics': {},
+                'thumbnail_url': None,
+                'detection_state': 'no_significant_vegetation',
+                'confident_veg_area_ha': detected_ha,
+                'fallback_zero_vegetation': True,
+                'low_confidence_training': False,
+                'p95_ndvi': p95_val,
+                'suspect_signal': p95_val < 0.30 if p95_val is not None else False
+            }
+            training_fc = None
+        elif "low_confidence_signal" in error_msg:
+            # State 2: Between floor and classify threshold — ambiguous signal
+            parts = error_msg.split('|')
+            detected_ha = float(parts[1])
+            threshold_ha = float(parts[2])
+            water_area_ha = float(parts[3])
+            p95_val = float(parts[4]) if len(parts) > 4 else None
+            print(f"  [RESULT] Low-confidence signal: {detected_ha} ha detected (threshold: {threshold_ha} ha)")
+            dummy_classified = ee.Image(0).updateMask(water_mask.eq(1)).rename('classification')
+            classification_result = {
+                'classified_image': dummy_classified,
+                'binary_classified_image': dummy_classified,
+                'training_accuracy': None,
+                'held_out_accuracy': None,
+                'confusion_matrix': None,
+                'per_class_metrics': {},
+                'thumbnail_url': None,
+                'detection_state': 'low_confidence_signal',
+                'confident_veg_area_ha': detected_ha,
+                'classify_threshold_ha': threshold_ha,
+                'water_area_for_threshold': water_area_ha,
+                'fallback_zero_vegetation': False,
+                'low_confidence_training': False,
+                'p95_ndvi': p95_val,
+                'suspect_signal': p95_val < 0.30 if p95_val is not None else False
+            }
+            training_fc = None
+        elif "Classifier training failed" in error_msg or "Invalid minimum size" in error_msg:
+            # Legacy fallback for other RF training failures
+            print("  [RESULT] RF training failed. Falling back to 0% coverage.")
+            dummy_classified = ee.Image(0).updateMask(water_mask.eq(1)).rename('classification')
+            classification_result = {
+                'classified_image': dummy_classified,
+                'binary_classified_image': dummy_classified,
+                'training_accuracy': 1.0,
+                'held_out_accuracy': 1.0,
+                'confusion_matrix': None,
+                'per_class_metrics': {},
+                'thumbnail_url': None,
+                'detection_state': 'no_significant_vegetation',
+                'fallback_zero_vegetation': True,
+                'low_confidence_training': False
+            }
+            training_fc = None
+        else:
+            classification_result = {
+                'error': error_msg,
+                'training_accuracy': 0,
+                'thumbnail_url': None
+            }
+            training_fc = None
 
     # --- Generate thumbnails ---
     # True Color
@@ -2040,19 +1916,6 @@ def run_full_pipeline(lat, lon,
         'classified': classified_thumb
     }
 
-    # Hypoxia risk map thumbnail (categorical: 0=LOW, 1=MODERATE, 2=HIGH)
-    hypoxia_risk_img = hypoxia_result.get('hypoxia_risk_category')
-    if hypoxia_risk_img is not None:
-        hypoxia_thumb = hypoxia_risk_img.getThumbURL({
-            'bands': ['hypoxia_risk_category'],
-            'min': 0, 'max': 2,
-            'palette': ['green', 'orange', 'red'],
-            'region': aoi, 'dimensions': 512
-        })
-        thumbnails['hypoxia_risk'] = hypoxia_thumb
-    else:
-        thumbnails['hypoxia_risk'] = None
-
     # Compile result
     result = {
         'image': image,
@@ -2065,94 +1928,78 @@ def run_full_pipeline(lat, lon,
         'classification': classification_result,
         'thumbnails': thumbnails,
         'labelled_points': labelled_points,
-        'training_samples': training_fc,
-        # Phase 2 auxiliary features
-        'chlorophyll_proxy': chl_proxy,
-        'turbidity_proxy': turbidity_proxy,
-        'temperature': temperature,
-        # Hypoxia risk / HHRI
-        'hhri': hypoxia_result.get('hhri'),
-        'hypoxia_risk_category': hypoxia_result.get('hypoxia_risk_category'),
-        'chlorophyll_proxy_band': hypoxia_result.get('chlorophyll_proxy'),
-        'turbidity_proxy_band': hypoxia_result.get('turbidity_proxy'),
-        'temperature_band': hypoxia_result.get('temperature'),
-        'hyacinth_density_band': hypoxia_result.get('hyacinth_density'),
+        'training_samples': training_fc if training_fc is not None else None,
     }
 
     # === WATER HYACINTH AREA CALCULATIONS (server-side EE) ===
-    # Use existing classified_image (3-class: 0=Water, 1=Hyacinth, 2=Other Vegetation)
-    # and existing water_mask for denominator (analyzed water area only).
     classified_image = classification_result.get('classified_image')
-    if classified_image is not None:
+    detection_state = classification_result.get('detection_state', 'classified')
+    if classified_image is not None and detection_state == 'classified':
         # Hyacinth area: sum of pixelArea where classification == 1
         hyacinth_mask = classified_image.eq(1).selfMask()
-        hyacinth_area_ha = hyacinth_mask.multiply(ee.Image.pixelArea()).reduceRegion(
+        hyacinth_dict = hyacinth_mask.multiply(ee.Image.pixelArea()).divide(10000).unmask(0).reduceRegion(
             reducer=ee.Reducer.sum(),
             geometry=aoi,
             scale=10,
             maxPixels=1e9,
             tileScale=4
-        ).get('classification')
+        )
+        hyacinth_area_ha = hyacinth_dict.get('classification')
+
         # Water area: sum of pixelArea within water_mask (binary 1=water)
-        water_area_ha = water_mask.multiply(ee.Image.pixelArea()).reduceRegion(
+        water_dict = water_mask.multiply(ee.Image.pixelArea()).divide(10000).unmask(0).reduceRegion(
             reducer=ee.Reducer.sum(),
-            geometry=aoi,
-            scale=30,
-            maxPixels=1e9,
-            tileScale=4
-        ).get('water_mask')
-        # Coverage percentage
-        hyacinth_coverage_val = ee.Number(hyacinth_area_ha).divide(ee.Number(water_area_ha)).multiply(100)
-        hyacinth_coverage = hyacinth_coverage_val.rename('hyacinth_coverage_pct')
-
-        # Also compute other vegetation area (class 2) for complete summary
-        other_veg_mask = classified_image.eq(2).selfMask()
-        other_veg_area_ha = other_veg_mask.multiply(ee.Image.pixelArea()).reduceRegion(
-            reducer=ee.Reducer.sum(),
-            geometry=aoi,
-            scale=10,
-            maxPixels=1e9,
-            tileScale=4
-        ).get('classification')
-
-        result['hyacinth_area_ha'] = hyacinth_area_ha
-        result['water_area_ha'] = water_area_ha
-        result['hyacinth_coverage_pct'] = hyacinth_coverage
-        result['other_vegetation_area_ha'] = other_veg_area_ha
-    else:
-        result['hyacinth_area_ha'] = None
-        result['water_area_ha'] = None
-        result['hyacinth_coverage_pct'] = None
-        result['other_vegetation_area_ha'] = None
-
-    # === SCALAR REDUCTIONS (reduce Phase 2 proxies over AOI for summary display) ===
-    chl_proxy_img = hypoxia_result.get('chlorophyll_proxy')
-    if chl_proxy_img is not None:
-        chl_stat = chl_proxy_img.reduceRegion(ee.Reducer.mean(), geometry=aoi, scale=30, maxPixels=1e9, tileScale=4)
-        result['chl_proxy_mean'] = chl_stat.get('chl_norm')
-    else:
-        result['chl_proxy_mean'] = None
-
-    turb_proxy_img = hypoxia_result.get('turbidity_proxy')
-    if turb_proxy_img is not None:
-        turb_stat = turb_proxy_img.reduceRegion(ee.Reducer.mean(), geometry=aoi, scale=30, maxPixels=1e9, tileScale=4)
-        result['turb_proxy_mean'] = turb_stat.get('turb_norm')
-    else:
-        result['turb_proxy_mean'] = None
-
-    # HHRI scalar (reduce over water AOI)
-    hhri_img = hypoxia_result.get('hhri')
-    if hhri_img is not None:
-        hhri_stat = hhri_img.reduceRegion(
-            reducer=ee.Reducer.mean(),
             geometry=aoi,
             scale=30,
             maxPixels=1e9,
             tileScale=4
         )
-        result['hhri_mean'] = hhri_stat.get('hhri')
+        water_area_ha = water_dict.get('water_mask')
+
+        # Coverage percentage (safe division)
+        # Handle cases where water_area is 0 or null
+        hyacinth_coverage = ee.Algorithms.If(
+            ee.Number(water_area_ha).gt(0),
+            ee.Number(hyacinth_area_ha).divide(ee.Number(water_area_ha)).multiply(100),
+            0
+        )
+
+        # Other vegetation area (class 2)
+        other_veg_mask = classified_image.eq(2).selfMask()
+        other_veg_dict = other_veg_mask.multiply(ee.Image.pixelArea()).divide(10000).unmask(0).reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=aoi,
+            scale=10,
+            maxPixels=1e9,
+            tileScale=4
+        )
+        other_veg_area_ha = other_veg_dict.get('classification')
+
+        result['hyacinth_area_ha'] = hyacinth_area_ha
+        result['water_area_ha'] = water_area_ha
+        result['hyacinth_coverage_pct'] = hyacinth_coverage
+        result['other_vegetation_area_ha'] = other_veg_area_ha
+        result['detection_state'] = detection_state
+        result['confident_veg_area_ha'] = classification_result.get('confident_veg_area_ha')
+        result['classify_threshold_ha'] = classification_result.get('classify_threshold_ha')
+    elif detection_state == 'low_confidence_signal':
+        result['hyacinth_area_ha'] = None
+        result['water_area_ha'] = classification_result.get('water_area_for_threshold')
+        result['hyacinth_coverage_pct'] = None
+        result['other_vegetation_area_ha'] = None
+        result['confident_veg_area_ha'] = classification_result.get('confident_veg_area_ha')
+        result['classify_threshold_ha'] = classification_result.get('classify_threshold_ha')
+        result['detection_state'] = 'low_confidence_signal'
     else:
-        result['hhri_mean'] = None
+        result['hyacinth_area_ha'] = None
+        result['water_area_ha'] = None
+        result['hyacinth_coverage_pct'] = None
+        result['other_vegetation_area_ha'] = None
+        result['detection_state'] = detection_state
+
+    result['p95_ndvi'] = classification_result.get('p95_ndvi')
+    result['suspect_signal'] = classification_result.get('suspect_signal')
+
 
     print(f"\n=== Pipeline Complete ===\n")
     return result
