@@ -658,7 +658,9 @@ def page_analysis():
                         <div class="stat-label">🌿 Hyacinth Area</div>
                         <div class="stat-value tabular-data">{hya_str} <span class="stat-unit">km²</span></div>
                     </div>
-                """, unsafe_allow_html=True)            with col_c:
+                """, unsafe_allow_html=True)
+
+            with col_c:
                 st.markdown(f"""
                     <div class="stat-card">
                         <div class="stat-label">⚠️ Hyacinth Coverage</div>
