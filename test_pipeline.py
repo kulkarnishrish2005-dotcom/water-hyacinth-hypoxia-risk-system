@@ -33,6 +33,5 @@ print("thumbnail_url:", classification_result.get('thumbnail_url'))
 # Raw area EE objects
 print("hyacinth_area_ha:", result.get('hyacinth_area_ha'))
 print("water_area_ha:", result.get('water_area_ha'))
-print("hhri_mean:", result.get('hhri_mean'))
 
 print("SUCCESS - no NameError/TypeError/AttributeError")

@@ -1,0 +1,215 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Vembanad Lake",
+        "type": "lake",
+        "state": "Kerala",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [76.4310, 9.6100] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Loktak Lake",
+        "type": "lake",
+        "state": "Manipur",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [93.7800, 24.5500] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Chilika Lake",
+        "type": "lake",
+        "state": "Odisha",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [85.3200, 19.7000] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dal Lake",
+        "type": "lake",
+        "state": "Jammu & Kashmir",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [74.8600, 34.1200] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Wular Lake",
+        "type": "lake",
+        "state": "Jammu & Kashmir",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [74.6000, 34.3667] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Pulicat Lake",
+        "type": "lake",
+        "state": "Andhra Pradesh / Tamil Nadu",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [80.1667, 13.6667] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sambhar Salt Lake",
+        "type": "lake",
+        "state": "Rajasthan",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [75.1300, 26.9200] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nainital Lake",
+        "type": "lake",
+        "state": "Uttarakhand",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [79.4500, 29.3900] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ganga at Varanasi",
+        "type": "river",
+        "state": "Uttar Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [83.0100, 25.3200] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Ganga at Patna",
+        "type": "river",
+        "state": "Bihar",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [85.1400, 25.6100] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Yamuna at Delhi",
+        "type": "river",
+        "state": "Delhi",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [77.2500, 28.6100] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Godavari at Rajahmundry",
+        "type": "river",
+        "state": "Andhra Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [81.7800, 17.0000] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Krishna at Vijayawada",
+        "type": "river",
+        "state": "Andhra Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [80.6480, 16.5062] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Brahmaputra at Guwahati",
+        "type": "river",
+        "state": "Assam",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [91.7500, 26.1800] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Narmada at Jabalpur",
+        "type": "river",
+        "state": "Madhya Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [79.9500, 23.1700] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Bhakra Nangal Dam (Gobind Sagar)",
+        "type": "dam",
+        "state": "Himachal Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [76.4300, 31.4200] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Hirakud Dam",
+        "type": "dam",
+        "state": "Odisha",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [83.8700, 21.5300] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Nagarjuna Sagar Dam",
+        "type": "dam",
+        "state": "Telangana / Andhra Pradesh",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [79.3120, 16.5730] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Tehri Dam",
+        "type": "dam",
+        "state": "Uttarakhand",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [78.4800, 30.3800] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mettur Dam (Stanley Reservoir)",
+        "type": "dam",
+        "state": "Tamil Nadu",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [77.8000, 11.7900] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sardar Sarovar Dam",
+        "type": "dam",
+        "state": "Gujarat",
+        "last_risk": null
+      },
+      "geometry": { "type": "Point", "coordinates": [73.7480, 21.8300] }
+    }
+  ]
+}

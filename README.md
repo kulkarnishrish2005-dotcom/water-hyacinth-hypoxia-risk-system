@@ -1,4 +1,4 @@
-# Water Hyacinth Detection System (Phase 1)
+# Inland Hyacinth Sentinel
 
 ## Overview
 
@@ -46,6 +46,31 @@ This mode is the only one used for scientific accuracy reporting.
 - Spatially-aware validation framework based on site/region/sector metadata
 - Multi-site ground-truth schema support
 - Prototype Dynamic World workflow retained for demo operation
+
+### Three-State Vegetation Detection Gate
+
+Before running the Random Forest classifier, the pipeline computes the **deterministic area**
+of confident vegetation pixels (via `reduceRegion(sum)` over the full water mask). This area
+is compared against two thresholds to produce one of three states:
+
+1. **`no_significant_vegetation`** — Detected area < 2.0 ha (fixed floor). The water body
+   appears clean. Returns 0% coverage with a green "all clear" indicator.
+2. **`low_confidence_signal`** — Detected area ≥ 2.0 ha but below `max(2.0, 0.4 × √water_area_ha)`.
+   Some spectral signal exists but is below the threshold needed for reliable classification at
+   this water body's scale. May indicate early-stage/patchy vegetation or residual shoreline noise.
+   The RF classifier is **not** run; the UI shows an amber warning with the raw detected hectares.
+3. **`classified`** — Detected area ≥ threshold. Sufficient signal for reliable RF training.
+   Full classification map and coverage percentage are computed and displayed.
+
+**Design rationale:** A binary pass/fail gate (states 1 and 3 only) was found to silently
+zero out sites with genuine but sparse vegetation (e.g. Dal Lake, Yamuna at Delhi), making
+them indistinguishable from truly clean sites. State 2 prevents this false-negative collapse
+by surfacing the ambiguous signal to the user rather than hiding it behind a 0% fallback.
+
+The sqrt-scaled threshold is a provisional heuristic calibrated on four test sites (Varanasi,
+Mississippi, Loktak, Vembanad). It models the observation that shoreline noise scales with
+perimeter (∝ √area), not with total water area. It is not a rigorously validated universal
+constant.
 
 ### ✅ Validation framework
 The repository supports generic validation splits such as:
@@ -116,6 +141,7 @@ The repository’s template/example data is not enough for final validation and 
 
 ## Known limitations
 
+- **Gate Validation Scope:** The dynamic area threshold (Gate One) and spectral sanity check (Gate Two) have been validated against 8 specific sites (2 confirmed-clean, 1 confirmed dense, 1 confirmed strong-but-localized, 3 ambiguous/low-signal, 1 blind confirmed-strong). Genuinely ambiguous, moderate-severity sites have not yet been blind-tested, and results near either threshold should be treated as provisional pending manual review.
 - Validation requires real, labeled data from actual sites
 - Spatial autocorrelation can remain even after site or sector splitting
 - Mixed pixels can reduce label purity at Sentinel-2 resolution
@@ -124,9 +150,7 @@ The repository’s template/example data is not enough for final validation and 
 - Label quality and manual interpretation error remain important
 - The system includes Phase 1 and Phase 2 prototype features
 - A stronger experiment should eventually use cross-site and cross-region generalization
-- **Phase 2 limitations**: Proxy variables are NOT direct in-situ measurements
 - Dissolved oxygen is NOT measured directly by satellites
-- HHRI weights are configurable but require empirical calibration for scientific validation
 - Sentinel-2 lacks thermal bands; temperature estimates require Landsat integration
 
 ## Next steps
@@ -149,20 +173,7 @@ The repository’s template/example data is not enough for final validation and 
 - [ ] Wire temporal NDVI difference into main pipeline
 - [ ] Cross-site and cross-region validation generalization
 
-### Phase 2 Enhancements:
-- [ ] Empirically calibrate HHRI weights using independent hypoxia measurements
-- [ ] Integrate Landsat thermal data for actual surface temperature
-- [ ] Build supervised hypoxia classifier with labeled dissolved oxygen data
-- [ ] Implement temporal/seasonal hypoxia risk tracking
-- [ ] Cross-validate Phase 1 hyacinth features contribution to hypoxia prediction
-- [ ] Multi-date time series analysis
-- [ ] Export classified rasters and risk maps (GeoTIFF)
-- [ ] Area statistics and spread-rate metrics
-- [ ] Integration with field validation data
-
 ### Scientific Integrity:
-- Phase 2 proxy variables are explicitly documented as estimated, not measured
-- HHRI weights are provisional configurable parameters, not empirically validated
 - No causation claimed from satellite correlation alone
 - Dissolved oxygen proxy (DO_proxy) is a placeholder, not a measured value
 

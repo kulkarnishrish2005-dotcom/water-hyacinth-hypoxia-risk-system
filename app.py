@@ -64,28 +64,228 @@ def switch_page(page):
 
 
 # ---------------------------------------------------------
+# CSS STYLING (STAGE 1-5)
+# ---------------------------------------------------------
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        /* Color Palette */
+        :root {
+            --bg-deep: #0a1929;
+            --bg-card: #132f4c;
+            --accent-cyan: #14b8a6;
+            --accent-hover: #0d9488;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #1e40af;
+            --risk-high: #ef4444;
+            --risk-mod: #f59e0b;
+            --risk-low: #10b981;
+        }
+
+        /* Base Typography & Background - USING SYSTEM FONTS FOR CSP SAFETY */
+        .stApp {
+            background-color: var(--bg-deep) !important;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        }
+        
+        h1, h2, h3, h4, h5, h6, p, span, label {
+            color: var(--text-main) !important;
+        }
+
+        /* Monospace / Tabular Numbers for Data */
+        .metric-value, .stMetricValue, .tabular-data {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+            font-weight: 700 !important;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Global Card System (Forms, Charts) */
+        div[data-testid="stForm"], 
+        .stDataFrame,
+        div.stPlotlyChart {
+            background-color: var(--bg-card) !important;
+            border-radius: 12px !important;
+            padding: 1.25rem !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1) !important;
+            border: 1px solid var(--border-color) !important;
+        }
+
+        /* Map Container Wrapper (Fixing the iframe styling) */
+        /* Streamlit wraps folium in a container. We style the iframe but ensure overflow is hidden */
+        iframe[title="streamlit_folium.st_folium"] {
+            border-radius: 12px !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid var(--border-color) !important;
+            background-color: var(--bg-card); /* Prevents white flash */
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #0f2238 !important;
+            border-right: 1px solid var(--border-color);
+        }
+
+        /* Buttons */
+        button[data-testid="baseButton-secondary"], 
+        button[data-testid="baseButton-primary"],
+        button[data-testid="baseButton-secondaryFormSubmit"] {
+            background-color: var(--accent-cyan) !important;
+            color: #0a1929 !important;
+            border-radius: 8px !important;
+            border: none !important;
+            font-weight: 600 !important;
+            padding: 0.6rem 1.2rem !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        button[data-testid="baseButton-secondary"]:hover, 
+        button[data-testid="baseButton-primary"]:hover,
+        button[data-testid="baseButton-secondaryFormSubmit"]:hover {
+            background-color: var(--accent-hover) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(20, 184, 166, 0.4) !important;
+            color: #ffffff !important;
+        }
+
+        /* Inputs */
+        div[data-baseweb="input"] > div, div[data-baseweb="select"] > div {
+            background-color: var(--bg-deep) !important;
+            border-radius: 8px !important;
+            border: 1px solid var(--border-color) !important;
+        }
+
+        /* Hero / Header Section */
+        .hero-container {
+            padding: 1.5rem 0 2rem 0;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid;
+            border-image: linear-gradient(to right, var(--accent-cyan), transparent) 1;
+        }
+        .hero-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .hero-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-muted) !important;
+            margin-top: 0;
+            font-weight: 400;
+        }
+
+        /* Custom Stat Cards (Stage 4) */
+        .stat-card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 10px 15px -3px rgba(20, 184, 166, 0.1);
+        }
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stat-value {
+            font-size: 2rem;
+            color: var(--text-main);
+            margin: 0;
+            line-height: 1.2;
+        }
+        .stat-unit {
+            font-size: 1rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        /* Image Cards & Legends (Stage 5) */
+        .image-card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+        .image-card img {
+            border-radius: 8px;
+            width: 100%;
+        }
+        .image-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .custom-legend {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1rem;
+            background: var(--bg-deep);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------
 # PAGE 1: SEARCH
 # ---------------------------------------------------------
 
-def page_search():
-    """Page 1: Search for water bodies by city name."""
-    st.title("🔍 Water Hyacinth Detection — Search Page")
-    st.markdown("### Search-by-city: find water bodies near your location of interest")
-
+def _render_city_search():
+    """City search UI — renders inside the sidebar."""
+    st.markdown("### Or search by name")
+    
     with st.form(key='search_form', clear_on_submit=False):
         city_name = st.text_input(
             "Enter a city or place name:",
             placeholder="e.g., Pune, Mumbai, Loktak Lake",
             help="Will search for water bodies within 15 km radius using JRC GSW dataset"
         )
-        search_submitted = st.form_submit_button("🔍 Search Water Bodies")
+        search_submitted = st.form_submit_button("🔍 Search")
 
     if search_submitted:
         if not city_name.strip():
             st.error("Please enter a city name.")
             return
 
-        with st.spinner(f"Geocoding '{city_name}' and discovering water bodies..."):
+        with st.spinner(f"Geocoding '{city_name}'..."):
             try:
                 # Discover water bodies using JRC GSW
                 result = discover_water_bodies(city_name, radius_km=25)
@@ -108,53 +308,61 @@ def page_search():
                     mode = 'prototype'
 
                 st.session_state.mode = mode
-
                 st.session_state.page = 'search'
 
                 if result.get('polygon_count', 0) > 0:
-                    if mode == 'scientific':
-                        st.success(f"✓ Found {result['polygon_count']} water body(ies) near {city_name}. "
-                                   "Select a water body to configure scientific validation splits.")
-                    else:
-                        st.success(f"✓ Found {result['polygon_count']} water body(ies) near {city_name}. "
-                                   "Running in prototype / proxy mode — Dynamic World labels are automatic proxies only.")
+                    st.success(f"✓ Found {result['polygon_count']} water body(ies) near {city_name}.")
                 else:
-                    st.warning("⚠️ No water bodies detected in the specified radius. "
-                               "Try adjusting the date range or trying another city.")
+                    st.warning("⚠️ No water bodies detected. Adjust date or try another city.")
 
             except ValueError as e:
                 st.error(f"Geocoding error: {e}")
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
-    # Display discovered water bodies
+    # Display discovered water bodies in sidebar
     if st.session_state.get('water_bodies'):
-        st.markdown("### 📍 Detected Water Bodies")
-
+        st.markdown("### 📍 Detected Sites")
         for i, wb in enumerate(st.session_state['water_bodies']):
-            col1, col2, col3 = st.columns([2, 1, 1])
-
-            with col1:
-                st.markdown(f"**Water Body {i+1}**")
-                st.caption(f"Centroid: {wb.get('centroid_lat', 'N/A')}, {wb.get('centroid_lon', 'N/A')}")
-
-            with col2:
+            with st.container():
+                st.markdown(f"**{wb.get('name', f'Water Body {i+1}')}**")
                 est_size = wb.get('estimated_size_ha', 'N/A')
                 if isinstance(est_size, (int, float)):
-                    st.markdown(f"{est_size:.1f} ha")
-                else:
-                    st.markdown(f"{est_size}")
-
-            with col3:
+                    st.caption(f"{est_size:.1f} ha")
                 if st.button(f"Select", key=f"select_{i}", use_container_width=True):
                     st.session_state.selected_water_body = wb
                     st.session_state.page = 'analysis'
                     st.rerun()
 
-        # Also show the search center
-        if st.session_state.get('search_center'):
-            st.markdown(f"**Search Center:** {st.session_state['search_center']['lat']}, "
-                        f"{st.session_state['search_center']['lon']}")
+
+# ---------------------------------------------------------
+# PAGE 1 (wrapper): MAIN MAP VIEW
+# ---------------------------------------------------------
+
+def page_search():
+    """Page 1: Default view - Interactive Map for site selection."""
+    # Hero Section
+    st.markdown("""
+        <div class="hero-container">
+            <div class="hero-title">
+                <span style="color: var(--accent-cyan);">💧</span> AquaWatch System
+            </div>
+            <div class="hero-subtitle">Satellite-driven Water Hyacinth Detection</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Sidebar for secondary controls
+    with st.sidebar:
+        st.markdown("## ⚙️ Controls")
+        _render_city_search()
+        
+        st.markdown("---")
+        st.markdown("### ℹ️ About")
+        st.info("Click a marker on the map to select a water body for analysis, or search by city above.")
+
+    # Main area map
+    from map_view import render_india_map
+    render_india_map()
 
 
 # ---------------------------------------------------------
@@ -163,8 +371,14 @@ def page_search():
 
 def page_analysis():
     """Page 2: Run full pipeline on selected water body."""
-    st.title("📊 Water Hyacinth Detection — Analysis Page")
-    st.markdown("### Full pipeline: data pull → indices → masking → RF classification")
+    st.markdown("""
+        <div class="hero-container" style="margin-bottom: 1rem; padding-bottom: 1rem;">
+            <div class="hero-title" style="font-size: 2rem;">
+                <span style="color: var(--accent-cyan);">📊</span> Analysis Pipeline
+            </div>
+            <div class="hero-subtitle">Satellite-driven Water Hyacinth Detection</div>
+        </div>
+    """, unsafe_allow_html=True)
 
     # Check we have a selected water body
     if not st.session_state.get('selected_water_body'):
@@ -177,7 +391,11 @@ def page_analysis():
     wb = st.session_state.selected_water_body
     lat, lon = wb['centroid_lat'], wb['centroid_lon']
 
-    st.markdown(f"**Selected Water Body:** Centroid at {lat}, {lon}")
+    wb_name = wb.get('name')
+    if wb_name:
+        st.markdown(f"**Selected Water Body:** {wb_name} — Centroid at {lat}, {lon}")
+    else:
+        st.markdown(f"**Selected Water Body:** Centroid at {lat}, {lon}")
 
     # Determine mode
     mode = st.session_state.get('mode', 'prototype')
@@ -301,6 +519,10 @@ def page_analysis():
                 if 'error' in results:
                     st.error(f"❌ Pipeline error: {results['error']}")
                     return
+                    
+                if results.get('classification', {}).get('error'):
+                    st.error(f"❌ Classification Error: {results['classification']['error']}")
+                    # We don't return here, we let the UI render what it can (like the thumbnails)
 
                 # Store results in session state
                 st.session_state.pipeline_results = results
@@ -335,13 +557,10 @@ def page_analysis():
         # 1. WATER HYACINTH DETECTION
         # =================================================================
         st.markdown("# 🌿 WATER HYACINTH DETECTION")
-
         st.markdown("**Where is the water hyacinth and how much was detected?**")
 
-        # ---- A. Summary Metrics ----
+        # ---- A. Summary Metrics (STAGE 4 Redesign) ----
         st.markdown("## A. Summary Metrics")
-
-        col_a, col_b, col_c, col_d = st.columns(4)
 
         # Helper to safely get scalar value from EE Number
         def _get_scalar(ee_obj, label="value"):
@@ -359,235 +578,204 @@ def page_analysis():
                 pass
             return None
 
-        # Water area (m²) → km²
+        # Values
         water_area_ha_val = _get_scalar(results.get('water_area_ha'))
-        if water_area_ha_val is not None:
-            water_area_km2 = water_area_ha_val / 100.0  # 1 km² = 100 ha
-            with col_a:
-                st.metric("Total Water Area Analyzed", f"{water_area_km2:.2f} km²")
-        else:
-            with col_a:
-                st.metric("Total Water Area Analyzed", "N/A")
-
-        # Hyacinth area (m²) → km²
         hyacinth_area_ha_val = _get_scalar(results.get('hyacinth_area_ha'))
-        if hyacinth_area_ha_val is not None:
-            hyacinth_area_km2 = hyacinth_area_ha_val / 100.0
-            with col_b:
-                st.metric("Water Hyacinth Area", f"{hyacinth_area_km2:.2f} km²")
-        else:
-            with col_b:
-                st.metric("Water Hyacinth Area", "N/A")
-
-        # Hyacinth coverage %
         coverage_val = _get_scalar(results.get('hyacinth_coverage_pct'))
-        with col_c:
-            if coverage_val is not None:
-                st.metric("Water Hyacinth Coverage", f"{coverage_val:.2f} %")
-            else:
-                st.metric("Water Hyacinth Coverage", "N/A")
-
-        # Other Vegetation area
         other_veg_ha_val = _get_scalar(results.get('other_vegetation_area_ha'))
-        with col_d:
-            if other_veg_ha_val is not None:
-                other_veg_km2 = other_veg_ha_val / 100.0
-                st.metric("Other Vegetation Area", f"{other_veg_km2:.2f} km²")
-            else:
-                st.metric("Other Vegetation Area", "N/A")
 
-        # Show the actual formulas used
-        st.caption(
-            f"**Calculation method (server-side EE):** "
-            f"Hyacinth area = Σ pixelArea where classification == 1; "
-            f"Water area = Σ pixelArea within water_mask; "
-            f"Coverage = (Hyacinth area / Water area) × 100. "
-            f"Other Vegetation = Σ pixelArea where classification == 2."
-        )
+        detection_state = results.get('detection_state', 'classified')
 
-        # ---- B. Water Hyacinth Classification Map ----
+        if detection_state == 'no_significant_vegetation':
+            st.success("✅ **No significant vegetation detected.** Water body appears clean for this date range.")
+            if water_area_ha_val is not None:
+                st.caption(f"Total water area: {water_area_ha_val / 100.0:.2f} km²")
+        elif detection_state == 'low_confidence_signal':
+            detected_ha = results.get('confident_veg_area_ha', 0)
+            threshold_ha = results.get('classify_threshold_ha', 0)
+            st.warning(
+                f"⚠️ **Low-confidence vegetation signal detected:** {detected_ha:.1f} ha of spectral "
+                f"signal found, below the {threshold_ha:.1f} ha threshold needed for reliable "
+                f"classification at this water body's scale. This may indicate early-stage, patchy, "
+                f"or seasonal vegetation — or residual shoreline noise. Coverage percentage is NOT "
+                f"computed for this state."
+            )
+            if water_area_ha_val is not None:
+                st.caption(f"Total water area: {water_area_ha_val / 100.0:.2f} km²")
+        else:
+            detected_ha = results.get('confident_veg_area_ha')
+            threshold_ha = results.get('classify_threshold_ha')
+            
+            if detected_ha is not None and threshold_ha is not None:
+                st.success(f"✅ **Area Gate Passed:** {detected_ha:.2f} ha detected, {threshold_ha:.2f} ha required.")
+            
+            if results.get('suspect_signal'):
+                p95_val = results.get('p95_ndvi', 'unknown')
+                if isinstance(p95_val, float):
+                    p95_val = f"{p95_val:.3f}"
+                st.warning(
+                    f"⚠️ **Spectral signal is weak (Cohort Median NDVI = {p95_val})** — this result may reflect "
+                    "ambiguous vegetation/mud/algae rather than confirmed water hyacinth. Recommend "
+                    "manual review of the NDVI thumbnail before treating this coverage % as reliable."
+                )
+
+            water_str = f"{water_area_ha_val / 100.0:.2f}" if water_area_ha_val is not None else "N/A"
+            hya_str = f"{hyacinth_area_ha_val / 100.0:.2f}" if hyacinth_area_ha_val is not None else "N/A"
+            other_str = f"{other_veg_ha_val / 100.0:.2f}" if other_veg_ha_val is not None else "N/A"
+            is_suspect = results.get('suspect_signal')
+
+            # Color coding for coverage
+            cov_str = "N/A"
+            cov_color = "var(--text-main)"
+            unit_str = '<span class="stat-unit">%</span>'
+            if coverage_val is not None:
+                if is_suspect:
+                    cov_str = "Unverified"
+                    cov_color = "var(--text-muted, gray)"
+                    unit_str = '<div style="font-size: 0.9rem; font-weight: normal; margin-top: 5px;">spectral signal below confidence threshold</div>'
+                else:
+                    cov_str = f"{coverage_val:.2f}"
+                    if coverage_val > 15:
+                        cov_color = "var(--risk-high)"
+                    elif coverage_val > 5:
+                        cov_color = "var(--risk-mod)"
+                    else:
+                        cov_color = "var(--risk-low)"
+    
+            col_a, col_b, col_c, col_d = st.columns(4)
+            
+            with col_a:
+                st.markdown(f"""
+                    <div class="stat-card">
+                        <div class="stat-label">🌊 Total Water Area</div>
+                        <div class="stat-value tabular-data">{water_str} <span class="stat-unit">km²</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+            with col_b:
+                st.markdown(f"""
+                    <div class="stat-card">
+                        <div class="stat-label">🌿 Hyacinth Area</div>
+                        <div class="stat-value tabular-data">{hya_str} <span class="stat-unit">km²</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with col_c:
+                st.markdown(f"""
+                    <div class="stat-card">
+                        <div class="stat-label">⚠️ Hyacinth Coverage</div>
+                        <div class="stat-value tabular-data" style="color: {cov_color};">{cov_str} {unit_str}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+            with col_d:
+                st.markdown(f"""
+                    <div class="stat-card">
+                        <div class="stat-label">🌾 Other Vegetation</div>
+                        <div class="stat-value tabular-data">{other_str} <span class="stat-unit">km²</span></div>
+                    </div>
+                """, unsafe_allow_html=True)
+    
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            cls_result = results.get('classification', {})
+            if cls_result.get('fallback_zero_vegetation'):
+                st.warning("⚠️ **Low Confidence Zero:** No confident vegetation training samples were found for this site/date range. The 0% coverage result may reflect threshold sensitivity rather than a confirmed absence of vegetation.")
+            elif cls_result.get('low_confidence_training'):
+                st.warning(f"⚠️ **Statistically Weak Training Data:** The classifier successfully trained, but on a very small sample pool ({cls_result.get('veg_sample_count')} vegetation / {cls_result.get('water_sample_count')} water samples). The reported accuracy and coverage percentages may be inflated by small-sample luck and should be interpreted with caution. Consider widening the date range to pull more cloud-free imagery.")
+    
+            st.caption(
+                "ℹ️ **Disclaimer on Risk Thresholds:** Coverage color thresholds are illustrative, not calibrated. "
+                "The underlying mechanism — that dense hyacinth mats sharply reduce dissolved oxygen by blocking light and atmospheric "
+                "gas exchange — is supported by field studies (e.g. Mironga et al., 2012, *Int. J. Humanities & Social Sciences*, "
+                "comparing hyacinth-covered vs open-water DO in Lake Naivasha; Villamagna & Murphy, 2010, *Freshwater Biology*, "
+                "review of hyacinth ecological impacts). However, neither source establishes a specific coverage-percentage threshold "
+                "for ecological impact onset — the 5%/15% cutoffs used here are provisional UI defaults."
+            )
+            st.caption(
+                "**Calculation method (server-side EE):** "
+                "Hyacinth area = Σ pixelArea where classification == 1; "
+                "Water area = Σ pixelArea within water_mask; "
+                "Coverage = (Hyacinth area / Water area) × 100. "
+                "Other Vegetation = Σ pixelArea where classification == 2."
+            )
+
+        # ---- B. Water Hyacinth Classification Map (STAGE 5 Redesign) ----
         st.markdown("## B. Water Hyacinth Classification")
-        st.caption(
-            "Legend: 🟦 Water (class 0) · 🟩 Water Hyacinth (class 1) · 🟪 Other Vegetation (class 2)"
-        )
+        
+        st.markdown("""
+            <div class="custom-legend">
+                <div class="legend-item"><div class="legend-color" style="background: blue;"></div> Water (Class 0)</div>
+                <div class="legend-item"><div class="legend-color" style="background: darkgreen;"></div> Water Hyacinth (Class 1)</div>
+                <div class="legend-item"><div class="legend-color" style="background: pink;"></div> Other Vegetation (Class 2)</div>
+            </div>
+        """, unsafe_allow_html=True)
 
         if thumbnails.get('classified'):
-            st.image(
-                thumbnails['classified'],
-                use_container_width=True,
-                caption="Random Forest Classification — Water / Water Hyacinth / Other Vegetation"
-            )
+            st.markdown(f"""
+                <div class="image-card">
+                    <div class="image-title">🗺️ Random Forest Classification Map</div>
+                    <img src="{thumbnails['classified']}" alt="Classification Map" />
+                </div>
+            """, unsafe_allow_html=True)
         else:
             st.info("Classification map not available")
 
-        # ---- C. Supporting Remote-Sensing Outputs ----
+        # ---- C. Supporting Remote-Sensing Outputs (STAGE 5 Redesign) ----
         st.markdown("## C. Supporting Remote-Sensing Outputs")
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("#### True Color")
             if thumbnails.get('true_color'):
-                st.image(thumbnails['true_color'], use_container_width=True, caption="Sentinel-2 True Color")
+                st.markdown(f"""
+                    <div class="image-card">
+                        <div class="image-title">📷 Sentinel-2 True Color</div>
+                        <img src="{thumbnails['true_color']}" alt="True Color" />
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 st.info("True color not available")
 
         with col2:
-            st.markdown("#### Water / Land Mask")
             if results.get('water_mask') is not None:
                 water_mask_thumb = results['water_mask'].getThumbURL({
                     'bands': ['water_mask'],
                     'min': 0, 'max': 1,
                     'region': results['aoi'], 'dimensions': 512
                 })
-                st.image(water_mask_thumb, use_container_width=True, caption="Water / Land Mask")
+                st.markdown(f"""
+                    <div class="image-card">
+                        <div class="image-title">💧 Water / Land Mask</div>
+                        <img src="{water_mask_thumb}" alt="Water Mask" />
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 st.info("Water mask not available")
 
         col3, col4 = st.columns(2)
         with col3:
-            st.markdown("#### NDVI (Vegetation / Hyacinth)")
             if thumbnails.get('ndvi'):
-                st.image(thumbnails['ndvi'], use_container_width=True, caption="NDVI Index")
+                st.markdown(f"""
+                    <div class="image-card">
+                        <div class="image-title">🌱 NDVI (Vegetation Index)</div>
+                        <img src="{thumbnails['ndvi']}" alt="NDVI Index" />
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 st.info("NDVI not available")
 
         with col4:
-            st.markdown("#### NDWI (Water)")
             if thumbnails.get('ndwi'):
-                st.image(thumbnails['ndwi'], use_container_width=True, caption="NDWI Index")
+                st.markdown(f"""
+                    <div class="image-card">
+                        <div class="image-title">🌊 NDWI (Water Index)</div>
+                        <img src="{thumbnails['ndwi']}" alt="NDWI Index" />
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 st.info("NDWI not available")
 
         # =================================================================
-        # 2. HYPOXIA RISK ASSESSMENT
-        # =================================================================
-        st.markdown("# ⚠️ HYPOXIA RISK ASSESSMENT")
-        st.markdown("**Estimated Hypoxia Risk** — satellite-derived proxy; not a direct dissolved oxygen measurement.")
-        st.caption(
-            "HHRI = w1·NDVI_norm + w2·(1−NDWI)_norm + w3·Chl_norm + w4·Turbidity_norm − w5·Temp_norm. "
-            "Thresholds: LOW < 0.3 ≤ MODERATE < 0.6 ≤ HIGH (configurable in PHASE2_CONFIG)."
-        )
-
-        # ---- D. Phase 2 Metrics ----
-        st.markdown("## D. Phase 2 Metrics")
-
-        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
-
-        # Chlorophyll proxy band mean (from reduced scalar)
-        chl_mean = _get_scalar(results.get('chl_proxy_mean'))
-        with col_p1:
-            if chl_mean is not None:
-                st.metric("Chlorophyll-a Proxy", f"{chl_mean:.4f}")
-            else:
-                st.metric("Chlorophyll-a Proxy", "N/A")
-            st.caption("Gitelson red-edge · NOT measured Chl-a")
-
-        # Turbidity proxy band mean (from reduced scalar)
-        turb_mean = _get_scalar(results.get('turb_proxy_mean'))
-        with col_p2:
-            if turb_mean is not None:
-                st.metric("Turbidity Proxy", f"{turb_mean:.4f}")
-            else:
-                st.metric("Turbidity Proxy", "N/A")
-            st.caption("Red/NIR band ratio · NOT measured turbidity")
-
-        # Temperature (placeholder)
-        temp_band = results.get('temperature_band')
-        temp_mean = _get_scalar(temp_band) if temp_band is not None else None
-        with col_p3:
-            if temp_mean is not None:
-                st.metric("Surface Temperature", f"{temp_mean:.4f} (norm.)")
-            else:
-                st.metric("Surface Temperature", "Placeholder")
-            st.caption("Sentinel-2 has no thermal bands · placeholder")
-
-        # HHRI scalar (reduced over water AOI)
-        hhri_mean_obj = results.get('hhri_mean')
-        hhri_scalar_val = _get_scalar(hhri_mean_obj)
-        with col_p4:
-            if hhri_scalar_val is not None:
-                st.metric("HHRI", f"{hhri_scalar_val:.2f}")
-            else:
-                st.metric("HHRI", "N/A")
-            st.caption("HHRI mean over water AOI · weighted proxy index (values may exceed 1)")
-
-        # ---- E. Hypoxia Risk Classification ----
-        st.markdown("## E. Estimated Hypoxia Risk Level")
-
-        # Determine risk level from HHRI scalar using existing thresholds
-        low_thr = 0.3
-        mod_thr = 0.6
-        if hhri_scalar_val is not None:
-            if hhri_scalar_val < low_thr:
-                risk_level = "LOW"
-                risk_color = "🟢"
-            elif hhri_scalar_val < mod_thr:
-                risk_level = "MODERATE"
-                risk_color = "🟡"
-            else:
-                risk_level = "HIGH"
-                risk_color = "🔴"
-            st.markdown(f"### {risk_color} Estimated Hypoxia Risk: **{risk_level}**")
-            st.caption(
-                f"Derived from HHRI = {hhri_scalar_val:.2f} using existing thresholds "
-                f"LOW<{low_thr}≤MODERATE<{mod_thr}≤HIGH (PHASE2_CONFIG['hhri']['thresholds'])."
-            )
-        else:
-            st.warning("⚠ HHRI scalar not available; risk level cannot be derived.")
-
-        # ---- F. Hypoxia Risk Map ----
-        st.markdown("## F. Estimated Hypoxia Risk Map")
-        st.caption(
-            "Spatial hypoxia-risk classification (categorical). "
-            "🟢 LOW · 🟡 MODERATE · 🔴 HIGH"
-        )
-
-        hypoxia_map_url = thumbnails.get('hypoxia_risk')
-        if hypoxia_map_url:
-            st.image(
-                hypoxia_map_url,
-                use_container_width=True,
-                caption="Estimated Hypoxia Risk Map (LOW / MODERATE / HIGH)"
-            )
-        else:
-            st.info("Hypoxia risk map not available")
-
-        # =================================================================
-        # 3. SCIENTIFIC STATUS
-        # =================================================================
-        st.markdown("---")
-        st.markdown("## 🔬 Scientific Status")
-        st.markdown(
-            """
-**Mode:** Prototype / Proxy
-- Water hyacinth classification uses Dynamic World labels as automatic proxies only — *not* authoritative species-level ground truth.
-- HHRI is a satellite-derived composite risk index combining NDVI, 1−NDWI, chlorophyll-a proxy, turbidity proxy, and temperature placeholder. It does **not** represent measured dissolved oxygen.
-- Surface temperature is currently a placeholder because Sentinel-2 has no thermal bands (Landsat integration required for actual temperature).
-- HHRI weights and thresholds (LOW < 0.3 ≤ MODERATE < 0.6 ≤ HIGH) are configurable in `PHASE2_CONFIG` but are *not empirically validated* against field measurements.
-"""
-        )
-
-        # =================================================================
-        # 4. MAIN RESULT SUMMARY (top-of-page)
-        # =================================================================
-        st.markdown("---")
-        st.markdown("## 📋 Main Result Summary")
-
-        st.code(
-            f"""
-WATER HYACINTH DETECTION
--------------------------
-Water Area:        {f'{water_area_km2:.2f} km²' if water_area_ha_val is not None else 'N/A'}
-Hyacinth Area:     {f'{hyacinth_area_km2:.2f} km²' if hyacinth_area_ha_val is not None else 'N/A'}
-Hyacinth Coverage: {f'{coverage_val:.2f} %' if coverage_val is not None else 'N/A'}
-
-HYPOXIA RISK ASSESSMENT
-------------------------
-HHRI:              {f'{hhri_scalar_val:.2f}' if hhri_scalar_val is not None else 'N/A'}
-Estimated Risk:    {risk_level if hhri_scalar_val is not None else 'N/A'}
-""",
-            language="text",
-        )
 
         st.caption("All values above are computed server-side from the existing Earth Engine pipeline; no values are hard-coded.")
 
@@ -620,8 +808,12 @@ def main():
     st.set_page_config(
         page_title="Water Hyacinth Detection System",
         page_icon="🌿",
-        layout="wide"
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
+    
+    # Apply custom CSS
+    inject_custom_css()
 
     # Initialize session state
     init_session_state()
