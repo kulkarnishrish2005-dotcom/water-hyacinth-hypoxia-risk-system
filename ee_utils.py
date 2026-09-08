@@ -1619,7 +1619,10 @@ def classify_random_forest(image, training_fc, classification_bands=None,
     )
 
     binary_classified_image = stacked.classify(trained_classifier).rename('classification')
-    binary_classified_image = binary_classified_image.updateMask(classification_mask)
+    
+    # Strictly mask to water body to prevent land from being classified as hyacinth
+    final_mask = water_mask.eq(1) if water_mask is not None else classification_mask
+    binary_classified_image = binary_classified_image.updateMask(final_mask)
 
     if postprocess_vegetation and 'ndvi_texture' in available_bands and 'distance_to_shore' in available_bands:
         feature_layers = image.select(['ndvi_texture', 'distance_to_shore'])
@@ -1637,7 +1640,7 @@ def classify_random_forest(image, training_fc, classification_bands=None,
         palette = ['blue', 'darkgreen']
         max_value = 1
 
-    classified_image = classified_image.updateMask(classification_mask)
+    classified_image = classified_image.updateMask(final_mask)
 
     # Proper train/test split: 70% train, 30% held-out test.
     # This is the metric that reflects real generalization performance.
