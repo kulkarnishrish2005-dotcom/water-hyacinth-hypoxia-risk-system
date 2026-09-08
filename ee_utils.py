@@ -2002,6 +2002,11 @@ def run_full_pipeline(lat, lon,
 
     result['p95_ndvi'] = classification_result.get('p95_ndvi')
     result['suspect_signal'] = classification_result.get('suspect_signal')
+    if detection_state == 'classified':
+        print(f"  Final Hyacinth Area: {result['hyacinth_area_ha'].getInfo():.2f} ha")
+        print(f"  Final Water Area: {result['water_area_ha'].getInfo():.2f} ha")
+        print(f"  Final Coverage: {result['hyacinth_coverage_pct'].getInfo():.2f} %")
+
 
 
     print(f"\n=== Pipeline Complete ===\n")

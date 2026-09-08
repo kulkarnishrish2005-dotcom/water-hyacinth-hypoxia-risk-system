@@ -621,19 +621,25 @@ def page_analysis():
 
             water_str = f"{water_area_ha_val / 100.0:.2f}" if water_area_ha_val is not None else "N/A"
             hya_str = f"{hyacinth_area_ha_val / 100.0:.2f}" if hyacinth_area_ha_val is not None else "N/A"
-            other_str = f"{other_veg_ha_val / 100.0:.2f}" if other_veg_ha_val is not None else "N/A"
-            
+            other_str = f"{other_veg_ha_val / 100.0:.2f}" if other_veg_ha_val is not None else "N/A"            is_suspect = results.get('suspect_signal')
+
             # Color coding for coverage
             cov_str = "N/A"
             cov_color = "var(--text-main)"
+            unit_str = '<span class="stat-unit">%</span>'
             if coverage_val is not None:
-                cov_str = f"{coverage_val:.2f}"
-                if coverage_val > 15:
-                    cov_color = "var(--risk-high)"
-                elif coverage_val > 5:
-                    cov_color = "var(--risk-mod)"
+                if is_suspect:
+                    cov_str = "Unverified"
+                    cov_color = "var(--text-muted, gray)"
+                    unit_str = '<div style="font-size: 0.9rem; font-weight: normal; margin-top: 5px;">spectral signal below confidence threshold</div>'
                 else:
-                    cov_color = "var(--risk-low)"
+                    cov_str = f"{coverage_val:.2f}"
+                    if coverage_val > 15:
+                        cov_color = "var(--risk-high)"
+                    elif coverage_val > 5:
+                        cov_color = "var(--risk-mod)"
+                    else:
+                        cov_color = "var(--risk-low)"
     
             col_a, col_b, col_c, col_d = st.columns(4)
             
@@ -651,13 +657,11 @@ def page_analysis():
                         <div class="stat-label">🌿 Hyacinth Area</div>
                         <div class="stat-value tabular-data">{hya_str} <span class="stat-unit">km²</span></div>
                     </div>
-                """, unsafe_allow_html=True)
-                
-            with col_c:
+                """, unsafe_allow_html=True)            with col_c:
                 st.markdown(f"""
                     <div class="stat-card">
                         <div class="stat-label">⚠️ Hyacinth Coverage</div>
-                        <div class="stat-value tabular-data" style="color: {cov_color};">{cov_str} <span class="stat-unit">%</span></div>
+                        <div class="stat-value tabular-data" style="color: {cov_color};">{cov_str} {unit_str}</div>
                     </div>
                 """, unsafe_allow_html=True)
                 
