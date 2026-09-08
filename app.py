@@ -621,7 +621,8 @@ def page_analysis():
 
             water_str = f"{water_area_ha_val / 100.0:.2f}" if water_area_ha_val is not None else "N/A"
             hya_str = f"{hyacinth_area_ha_val / 100.0:.2f}" if hyacinth_area_ha_val is not None else "N/A"
-            other_str = f"{other_veg_ha_val / 100.0:.2f}" if other_veg_ha_val is not None else "N/A"            is_suspect = results.get('suspect_signal')
+            other_str = f"{other_veg_ha_val / 100.0:.2f}" if other_veg_ha_val is not None else "N/A"
+            is_suspect = results.get('suspect_signal')
 
             # Color coding for coverage
             cov_str = "N/A"
